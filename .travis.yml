@@ -11,8 +11,11 @@ sudo: false
 dist: trusty
 
 env:
-  - GLSLANG_BUILD_TYPE=Release
-  - GLSLANG_BUILD_TYPE=Debug
+  global:
+    - secure: q2/PPpFlCUay78Cs3K5bFbAQqodFCgahS1IytFkPEPxBbo7icW8XSma7R34t83+r5c9rsbH776ZywUH1EsfUIJRpZE2Q/bK7Ucv0LICI2bCWoYCGLBVfx9J9ZOlBkekxHio3dBbgbWBdw0lCinSw5cpViSH9qb4eHhuT088hHiSjmCXylCtyDp/AV2Hu+mH9aUDNuBRrG0jyXIz4PZoYmwIXzkJbTx9BcIHzX/28hEbYHfeZNRrhM1MCal1edUrblxWUANfN4rOQUcugBjP1PPnOxBfvHCMVpBX4BeHsIXoZUCdS05y4oX2YHX8uUnNS6oBT9T7Tn2ed5JqztxlDphNs2gKlKA7VcxxGdhcs8OtnYemEi8PH1iHjvnZYwxEp32ZBafXfd4+X+uD6dfK+psq3LUVwZe4oo+eoH872QDmTkgjL9wNTuhGG6wuOMpQGC2Ao7oaX3HLYTbYBd4k4poftcAZo0Ekci4HNZbuxz8UsSF9c//XPkbednyLAV88+vRBDJebrIxhDw7vW96Jj45JFeyjTC8S/iH20neepWf2eLx3sJlpxNofuVWbafERK6RVeHZEO8Vhn66Ii9BWdCHCiqR32VjIfM8jxA5ITlcHwMomT2Jg1wBwFoO0mBLiWAnaXZM7XmpNlqb114J+9XPdnyiy9s3OxBl9XOCAMgOo=
+  matrix:
+    - GLSLANG_BUILD_TYPE=Release
+    - GLSLANG_BUILD_TYPE=Debug
 
 compiler:
   - clang
@@ -75,3 +78,46 @@ script:
       ctest --output-on-failure &&
       cd ../Test && ./runtests;
     fi
+
+after_success:
+  # For debug build, the generated dll has a postfix "d" in its name.
+  - if [[ "${GLSLANG_BUILD_TYPE}" == "Debug" ]]; then
+      export SUFFIX="d";
+    else
+      export SUFFIX="";
+    fi
+  # Create tarball for deployment
+  - if [[ ${CC} == clang* && "${BUILD_NDK}" != "ON" ]]; then
+      cd ../build/install;
+      export TARBALL=glslang-master-${TRAVIS_OS_NAME}-${GLSLANG_BUILD_TYPE}.zip;
+      zip ${TARBALL}
+        bin/glslangValidator
+        include/glslang/*
+        include/SPIRV/*
+        lib/libglslang${SUFFIX}.a
+        lib/libHLSL${SUFFIX}.a
+        lib/libOGLCompiler${SUFFIX}.a
+        lib/libOSDependent${SUFFIX}.a
+        lib/libSPIRV${SUFFIX}.a
+        lib/libSPVRemapper${SUFFIX}.a
+        lib/libSPIRV-Tools${SUFFIX}.a
+        lib/libSPIRV-Tools-opt${SUFFIX}.a;
+    fi
+
+before_deploy:
+  # Tag the current top of the tree as "master-tot".
+  # Travis CI replies on the tag name to properly push to GitHub Releases.
+  - git config --global user.name "Travis CI"
+  - git config --global user.email "builds@travis-ci.org"
+  - git tag -f master-tot
+  - git push -q -f https://${TAGPERM}@github.com/antiagainst/glslang --tags
+
+deploy:
+  provider: releases
+  api_key: ${TAGPERM}
+  on:
+    branch: master
+    condition: ${CC} == clang* && ${BUILD_NDK} != ON
+  file: ${TARBALL}
+  skip_cleanup: true
+  overwrite: true
